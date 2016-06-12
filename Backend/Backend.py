@@ -3,13 +3,15 @@ import twitter
 from functions import *
 from statistics import mean
 import feedparser
+import re 
 
 app = Flask(__name__)
 
 api = twitter.Api(
 )
 
-TWEET_COUNT = 3
+TWEET_COUNT = 10
+p = re.compile('#@')
 
 
 @app.route('/')
@@ -21,16 +23,26 @@ def hello_world():
     hl_keys = set()
     rss = feedparser.parse('http://rss.cnn.com/rss/edition_world.rss')
     headlines = [item['title'] for item in rss['items']]
-    for headline in headlines[:3]:
+    for headline in headlines:
         for concept in concept_extract(headline):
             hl_keys.add(concept)
-    for trend in trends[:2]:
-        trend = trend.name.encode('utf=8').decode('utf-8', 'ignore').replace('#', '')
+
+    tweet_text = []
+            
+    for trend in trends:
+        trend = trend.name.encode('utf=8').decode('ascii', 'ignore').replace('#', ' ')
         trend = trend.strip()
         print(trend)
-        tweets = api.GetSearch(term=trend, lang='en', count=TWEET_COUNT)
+        try:
+            tweets = api.GetSearch(term=trend, lang='en', count=TWEET_COUNT)
+        except:
+            continue
         for tweet in tweets:
             text = tweet.text.encode('utf=8').decode('ascii', 'ignore')
+            if text in tweet_text:
+                continue
+            text = p.sub(' ', text)
+            tweet_text.append(text)
             sentiment = sentiment_detect(tweet.text.encode('utf-8').decode('ascii', 'ignore'))
             location = tweet.user.location
             if not location or location == 'Global':
@@ -50,16 +62,17 @@ def hello_world():
                 temp[loc_code]['trends'][trend] = []
             temp[loc_code]['trends'][trend].append(sentiment)
 
-    i = 0
     for hl_key in hl_keys:
-        i += 1
-        if i == 3:
-            break
-        tweets = api.GetSearch(term=hl_key, lang='en', count=TWEET_COUNT)
+        try:
+            tweets = api.GetSearch(term=hl_key, lang='en', count=TWEET_COUNT)
+        except:
+            continue
         for tweet in tweets:
             text = tweet.text.encode('utf=8').decode('ascii', 'ignore')
-            # print(text)
-            # print('HAHAHAHAHAHAHA')
+            if text in tweet_text:
+                continue
+            text = p.sub(' ', text)
+            tweet_text.append(text)
             sentiment = sentiment_detect(tweet.text.encode('utf-8').decode('ascii', 'ignore'))
             location = tweet.user.location
             if not location or location == 'Global':
@@ -84,7 +97,6 @@ def hello_world():
     for k1 in temp:
         sentiments = []
         for k2 in temp[k1]['trends']:
-            i += 1
             temp[k1]['trends'][k2] = mean(temp[k1]['trends'][k2])
             sentiments.append(temp[k1]['trends'][k2])
 
@@ -130,8 +142,10 @@ def search_query(query):
     map_output = []
     loc_sentiments = {}
     tweet_sentiment = []
-    tweets = api.GetSearch(term=term, since=since, until=until, count=200, lang='en')
+    tweets = api.GetSearch(term=term, since=since, until=until, count=TWEET_COUNT, lang='en')
     for tweet in tweets:
+        text = tweet.text.encode('utf-8').decode('ascii', 'ignore')
+        text = p.sub(' ', text)
         sentiment = sentiment_detect(tweet.text.encode('utf-8').decode('ascii', 'ignore'))
         location = tweet.user.location
         if not location or location == 'Global':
